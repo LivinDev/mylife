@@ -1,22 +1,41 @@
 ---
-import fs from "fs/promises";
-import path from "path";
 import Layout from "../layouts/Layout.astro";
 
-const scoresFile = path.join(process.cwd(), "src/data/scores.json");
+// JSONBin.io configuration
+const JSONBIN_URL = "https://api.jsonbin.io/v3/b/689395c57b4b8670d8aef688";
+const API_KEY = "$2a$10$hr.OB5VjKf0aonkaT2HB9.qHRHEXC3Nm5Fdmfl8IhqCMuVpzf5nA6";
 
-// Initialize scores file if it doesn't exist
-try {
-  await fs.access(scoresFile);
-} catch {
-  await fs.mkdir(path.dirname(scoresFile), { recursive: true });
-  await fs.writeFile(
-    scoresFile,
-    JSON.stringify({
+async function getScores() {
+  try {
+    const response = await fetch(JSONBIN_URL + "/latest", {
+      headers: {
+        "X-Master-Key": API_KEY,
+      },
+    });
+    const data = await response.json();
+    return data.record;
+  } catch (error) {
+    console.error("Error fetching scores:", error);
+    return {
       good: { total: 0, history: [] },
       bad: { total: 0, history: [] },
-    })
-  );
+    };
+  }
+}
+
+async function updateScores(scores: Scores) {
+  try {
+    await fetch(JSONBIN_URL, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Master-Key": API_KEY,
+      },
+      body: JSON.stringify(scores),
+    });
+  } catch (error) {
+    console.error("Error updating scores:", error);
+  }
 }
 
 // Handle form submissions
@@ -34,8 +53,7 @@ if (Astro.request.method === "POST") {
   const currentDate = new Date().toISOString().split("T")[0];
   const currentTime = new Date().toLocaleTimeString();
 
-  const scoresData = await fs.readFile(scoresFile, "utf8");
-  const scores = JSON.parse(scoresData);
+  const scores = await getScores();
 
   if ((type === "good" || type === "bad") && scoreChange !== 0) {
     scores[type].total += scoreChange;
@@ -45,14 +63,14 @@ if (Astro.request.method === "POST") {
       time: currentTime,
       timestamp: Date.now(),
     });
+
+    await updateScores(scores);
   }
 
-  await fs.writeFile(scoresFile, JSON.stringify(scores, null, 2));
   return Astro.redirect("/");
 }
 
-const scoresData = await fs.readFile(scoresFile, "utf8");
-const scores = JSON.parse(scoresData);
+const scores = await getScores();
 
 // Type definitions
 interface HistoryItem {
