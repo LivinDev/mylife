@@ -2,8 +2,8 @@
 import Layout from "../layouts/Layout.astro";
 
 // JSONBin.io configuration
-const JSONBIN_URL = "https://api.jsonbin.io/v3/b/689395c57b4b8670d8aef688";
-const API_KEY = "$2a$10$hr.OB5VjKf0aonkaT2HB9.qHRHEXC3Nm5Fdmfl8IhqCMuVpzf5nA6";
+const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${import.meta.env.JSONBIN_BIN_ID}`;
+const API_KEY = import.meta.env.JSONBIN_API_KEY;
 
 async function getScores() {
   try {
