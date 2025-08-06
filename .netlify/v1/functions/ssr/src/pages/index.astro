@@ -1,0 +1,528 @@
+---
+import fs from "fs/promises";
+import path from "path";
+import Layout from "../layouts/Layout.astro";
+
+const scoresFile = path.join(process.cwd(), "src/data/scores.json");
+
+// Initialize scores file if it doesn't exist
+try {
+  await fs.access(scoresFile);
+} catch {
+  await fs.mkdir(path.dirname(scoresFile), { recursive: true });
+  await fs.writeFile(
+    scoresFile,
+    JSON.stringify({
+      good: { total: 0, history: [] },
+      bad: { total: 0, history: [] },
+    })
+  );
+}
+
+// Handle form submissions
+if (Astro.request.method === "POST") {
+  const formData = await Astro.request.formData();
+  const type = formData.get("type") as string;
+  const action = formData.get("action") as string;
+  const customValue = formData.get("customValue") as string;
+
+  let scoreChange = 0;
+  if (action === "increment") scoreChange = 1;
+  else if (action === "decrement") scoreChange = -1;
+  else if (action === "custom") scoreChange = parseInt(customValue) || 0;
+
+  const currentDate = new Date().toISOString().split("T")[0];
+  const currentTime = new Date().toLocaleTimeString();
+
+  const scoresData = await fs.readFile(scoresFile, "utf8");
+  const scores = JSON.parse(scoresData);
+
+  if ((type === "good" || type === "bad") && scoreChange !== 0) {
+    scores[type].total += scoreChange;
+    scores[type].history.push({
+      amount: scoreChange,
+      date: currentDate,
+      time: currentTime,
+      timestamp: Date.now(),
+    });
+  }
+
+  await fs.writeFile(scoresFile, JSON.stringify(scores, null, 2));
+  return Astro.redirect("/");
+}
+
+const scoresData = await fs.readFile(scoresFile, "utf8");
+const scores = JSON.parse(scoresData);
+
+// Type definitions
+interface HistoryItem {
+  amount: number;
+  date: string;
+  time: string;
+  timestamp: number;
+}
+
+interface DailyTotal {
+  date: string;
+  total: number;
+}
+
+interface ScoreData {
+  total: number;
+  history: HistoryItem[];
+}
+
+interface Scores {
+  good: ScoreData;
+  bad: ScoreData;
+}
+
+// Calculate daily totals for both good and bad
+function getDailyTotals(history: HistoryItem[]): DailyTotal[] {
+  const dailyTotals: Record<string, number> = {};
+
+  history.forEach((item: HistoryItem) => {
+    if (!dailyTotals[item.date]) {
+      dailyTotals[item.date] = 0;
+    }
+    dailyTotals[item.date] += item.amount;
+  });
+
+  return Object.entries(dailyTotals)
+    .map(([date, total]): DailyTotal => ({ date, total }))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 7); // Show last 7 days
+}
+
+const goodDailyTotals: DailyTotal[] = getDailyTotals(scores.good.history);
+const badDailyTotals: DailyTotal[] = getDailyTotals(scores.bad.history);
+---
+
+<Layout title="Good vs Bad">
+  <style>
+    body {
+      background: #f8fafc;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 420px;
+      margin: 0 auto;
+      padding: 24px 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+        sans-serif;
+      min-height: 100vh;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 32px;
+      padding: 0 8px;
+    }
+
+    .title {
+      font-size: 28px;
+      font-weight: 700;
+      color: #1a202c;
+      margin: 0 0 8px 0;
+      letter-spacing: -0.025em;
+    }
+
+    .subtitle {
+      font-size: 16px;
+      color: #64748b;
+      margin: 0;
+      font-weight: 500;
+    }
+
+    .section {
+      background: #ffffff;
+      border-radius: 16px;
+      margin-bottom: 24px;
+      box-shadow:
+        0 1px 3px rgba(0, 0, 0, 0.1),
+        0 1px 2px rgba(0, 0, 0, 0.06);
+      border: 1px solid #e2e8f0;
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 24px 24px 16px 24px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    .section-title {
+      font-size: 20px;
+      font-weight: 600;
+      text-align: center;
+      margin: 0 0 16px 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .good-title {
+      color: #059669;
+    }
+
+    .bad-title {
+      color: #dc2626;
+    }
+
+    .score {
+      font-size: 48px;
+      font-weight: 800;
+      text-align: center;
+      margin: 0;
+      color: #1a202c;
+      line-height: 1;
+    }
+
+    .controls {
+      padding: 24px;
+    }
+
+    .button-row {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .btn {
+      width: 52px;
+      height: 52px;
+      border: none;
+      border-radius: 12px;
+      font-size: 24px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .plus-btn {
+      background: #10b981;
+      color: white;
+    }
+
+    .plus-btn:hover {
+      background: #059669;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .plus-btn:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .minus-btn {
+      background: #ef4444;
+      color: white;
+    }
+
+    .minus-btn:hover {
+      background: #dc2626;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .minus-btn:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .custom-row {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      background: #f8fafc;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .number-input {
+      width: 80px;
+      height: 44px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 600;
+      color: #1a202c;
+      background: white;
+      transition: border-color 0.15s ease;
+    }
+
+    .number-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .add-btn {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .add-btn:hover {
+      background: #2563eb;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .add-btn:active {
+      transform: translateY(0);
+    }
+
+    .daily-summary {
+      padding: 20px 24px 24px 24px;
+    }
+
+    .summary-title {
+      font-size: 14px;
+      color: #64748b;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    .daily-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    .daily-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .daily-item:first-child {
+      padding-top: 0;
+    }
+
+    .daily-date {
+      font-size: 15px;
+      font-weight: 500;
+      color: #374151;
+    }
+
+    .today-label {
+      font-size: 12px;
+      color: #6b7280;
+      margin-left: 8px;
+      font-weight: 500;
+    }
+
+    .daily-total {
+      font-size: 18px;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 8px;
+      min-width: 50px;
+      text-align: center;
+    }
+
+    .good-total {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .bad-total {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .neutral-total {
+      background: #f3f4f6;
+      color: #6b7280;
+    }
+
+    .empty {
+      text-align: center;
+      color: #9ca3af;
+      font-size: 15px;
+      padding: 32px 16px;
+      font-style: italic;
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        padding: 20px 12px;
+      }
+
+      .section-header,
+      .controls,
+      .daily-summary {
+        padding: 20px 16px;
+      }
+
+      .title {
+        font-size: 24px;
+      }
+
+      .score {
+        font-size: 40px;
+      }
+    }
+  </style>
+
+  <div class="container">
+    <div class="header">
+      <h1 class="title">Good vs Bad</h1>
+      <p class="subtitle">Track your daily progress</p>
+    </div>
+
+    <!-- Good Section -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title good-title">
+          <span>😇</span>
+          <span>Good Actions</span>
+        </div>
+        <div class="score">{scores.good.total}</div>
+      </div>
+
+      <div class="controls">
+        <div class="button-row">
+          <form method="POST" style="display: inline;">
+            <input type="hidden" name="type" value="good" />
+            <input type="hidden" name="action" value="increment" />
+            <button type="submit" class="btn plus-btn">+</button>
+          </form>
+          <form method="POST" style="display: inline;">
+            <input type="hidden" name="type" value="good" />
+            <input type="hidden" name="action" value="decrement" />
+            <button type="submit" class="btn minus-btn">−</button>
+          </form>
+        </div>
+
+        <form method="POST" class="custom-row">
+          <input type="hidden" name="type" value="good" />
+          <input type="hidden" name="action" value="custom" />
+          <input
+            type="number"
+            name="customValue"
+            class="number-input"
+            placeholder="0"
+          />
+          <button type="submit" class="add-btn">Add Points</button>
+        </form>
+      </div>
+
+      <div class="daily-summary">
+        <div class="summary-title">Daily Totals</div>
+        {
+          goodDailyTotals.length === 0 ? (
+            <div class="empty">No activity yet</div>
+          ) : (
+            goodDailyTotals.map((day, index) => (
+              <div class="daily-item">
+                <div class="daily-date">
+                  {new Date(day.date).toLocaleDateString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                  {index === 0 && <span class="today-label">Today</span>}
+                </div>
+                <div
+                  class={`daily-total ${day.total > 0 ? "good-total" : day.total < 0 ? "bad-total" : "neutral-total"}`}
+                >
+                  {day.total > 0 ? "+" : ""}
+                  {day.total}
+                </div>
+              </div>
+            ))
+          )
+        }
+      </div>
+    </div>
+
+    <!-- Bad Section -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title bad-title">
+          <span>😈</span>
+          <span>Bad Actions</span>
+        </div>
+        <div class="score">{scores.bad.total}</div>
+      </div>
+
+      <div class="controls">
+        <div class="button-row">
+          <form method="POST" style="display: inline;">
+            <input type="hidden" name="type" value="bad" />
+            <input type="hidden" name="action" value="increment" />
+            <button type="submit" class="btn plus-btn">+</button>
+          </form>
+          <form method="POST" style="display: inline;">
+            <input type="hidden" name="type" value="bad" />
+            <input type="hidden" name="action" value="decrement" />
+            <button type="submit" class="btn minus-btn">−</button>
+          </form>
+        </div>
+
+        <form method="POST" class="custom-row">
+          <input type="hidden" name="type" value="bad" />
+          <input type="hidden" name="action" value="custom" />
+          <input
+            type="number"
+            name="customValue"
+            class="number-input"
+            placeholder="0"
+          />
+          <button type="submit" class="add-btn">Add Points</button>
+        </form>
+      </div>
+
+      <div class="daily-summary">
+        <div class="summary-title">Daily Totals</div>
+        {
+          badDailyTotals.length === 0 ? (
+            <div class="empty">No activity yet</div>
+          ) : (
+            badDailyTotals.map((day, index) => (
+              <div class="daily-item">
+                <div class="daily-date">
+                  {new Date(day.date).toLocaleDateString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                  {index === 0 && <span class="today-label">Today</span>}
+                </div>
+                <div
+                  class={`daily-total ${day.total > 0 ? "bad-total" : day.total < 0 ? "good-total" : "neutral-total"}`}
+                >
+                  {day.total > 0 ? "+" : ""}
+                  {day.total}
+                </div>
+              </div>
+            ))
+          )
+        }
+      </div>
+    </div>
+  </div>
+</Layout>
